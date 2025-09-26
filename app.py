@@ -1,26 +1,29 @@
 import io, os
 from copy import deepcopy
 import streamlit as st
-from docx import Document
+from docx import Document as DocxDocument
+from docx.document import Document
 from docx.oxml.text.paragraph import CT_P
 from docx.oxml.table import CT_Tbl
 from docx.text.paragraph import Paragraph
 from docx.table import Table
 import openai
 
+# -------------------- Streamlit UI --------------------
 st.set_page_config(page_title="One-Minute Resume Tailor", page_icon="📝", layout="centered")
 st.title("📝 One-Minute Resume Tailor")
 st.caption("Upload .docx resume + paste JD → get edited .docx that keeps your template. Export to PDF in Word/Google Docs.")
 
-# --- Secrets ---
+# -------------------- OpenAI API Setup --------------------
 api_key = os.environ.get("OPENAI_API_KEY", "")
 if not api_key:
-    st.warning("Add OPENAI_API_KEY in Streamlit Secrets (TOML: OPENAI_API_KEY = \"sk-...\" ).")
+    st.warning("⚠️ Add OPENAI_API_KEY in Streamlit Secrets (TOML: OPENAI_API_KEY = \"sk-...\").")
 openai.api_key = api_key
 
-# --- Helpers to walk the doc without breaking styles ---
+# -------------------- Helpers --------------------
 def _iter_block_items(parent):
-    if isinstance(parent, Document):
+    """Yield paragraphs and tables in document order while preserving styles."""
+    if isinstance(parent, DocxDocument):   # ✅ fixed type check
         parent_elm = parent.element.body
     else:
         parent_elm = parent._element
@@ -31,13 +34,14 @@ def _iter_block_items(parent):
             yield Table(child, parent)
 
 def extract_text_snapshot(doc):
+    """Extract plain text snapshot for AI (without losing section order)."""
     lines = []
     for block in _iter_block_items(doc):
         if isinstance(block, Paragraph):
             txt = block.text.strip()
             if txt:
                 lines.append(txt)
-        else:
+        else:  # table
             for row in block.rows:
                 row_txt = " | ".join([cell.text.strip() for cell in row.cells])
                 if row_txt.strip():
@@ -54,6 +58,7 @@ Rules:
 """
 
 def call_llm(resume_text, jd_text):
+    """Send resume + JD to OpenAI and return revised resume text."""
     user_prompt = f"""
 ORIGINAL RESUME (text-only snapshot):
 ---
@@ -70,16 +75,18 @@ Task: Return ONLY the revised resume TEXT (no extra commentary), keeping the SAM
     resp = openai.chat.completions.create(
         model="gpt-4o-mini",
         messages=[
-            {"role":"system","content": SYSTEM_PROMPT},
-            {"role":"user","content": user_prompt}
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": user_prompt}
         ],
         temperature=0.2
     )
     return resp.choices[0].message.content.strip()
 
 def rewrite_doc_in_place(src_doc, revised_text):
+    """Replace text in a Word doc while preserving styles and formatting."""
     new_lines = [ln.rstrip() for ln in revised_text.splitlines()]
     it = iter(new_lines)
+
     def next_line():
         try:
             return next(it)
@@ -109,30 +116,32 @@ def rewrite_doc_in_place(src_doc, revised_text):
                             p.text = line
     return src_doc
 
-# --- UI ---
-resume_file = st.file_uploader("Upload your **.docx** resume", type=["docx"])
-jd = st.text_area("Paste the Job Description", height=220, placeholder="Paste JD here...")
+# -------------------- Streamlit UI Controls --------------------
+resume_file = st.file_uploader("📄 Upload your **.docx** resume", type=["docx"])
+jd = st.text_area("📝 Paste the Job Description", height=220, placeholder="Paste JD here...")
 
 if st.button("✨ Tailor my resume", type="primary", use_container_width=True):
     if not (resume_file and jd and api_key):
-        st.error("Please upload a .docx, paste a JD, and ensure the API key is set.")
+        st.error("❌ Please upload a .docx, paste a JD, and ensure the API key is set.")
         st.stop()
 
     try:
-        src = Document(resume_file)
+        src = DocxDocument(resume_file)  # ✅ use constructor correctly
     except Exception as e:
         st.error(f"Could not read .docx. Ensure it is a valid Word file. Error: {e}")
         st.stop()
 
     snapshot = extract_text_snapshot(src)
-    with st.spinner("Rewriting bullets and aligning to JD..."):
+
+    with st.spinner("⏳ Rewriting bullets and aligning to JD..."):
         revised_text = call_llm(snapshot, jd)
 
     revised_doc = rewrite_doc_in_place(deepcopy(src), revised_text)
 
     buf = io.BytesIO()
     revised_doc.save(buf)
-    st.success("Done! Download your tailored resume:")
+
+    st.success("✅ Done! Download your tailored resume:")
     st.download_button(
         "⬇️ Download .docx",
         data=buf.getvalue(),
@@ -140,4 +149,4 @@ if st.button("✨ Tailor my resume", type="primary", use_container_width=True):
         mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         use_container_width=True
     )
-    st.info("Open the .docx in Google Docs or Word → File → Download → PDF for perfect export.")
+    st.info("💡 Tip: Open the .docx in Google Docs or Word → File → Download → PDF for a perfect export.")
