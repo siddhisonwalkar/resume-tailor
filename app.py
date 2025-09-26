@@ -6,7 +6,7 @@ from docx.oxml.text.paragraph import CT_P
 from docx.oxml.table import CT_Tbl
 from docx.text.paragraph import Paragraph
 from docx.table import Table
-from openai import OpenAI
+import openai
 
 st.set_page_config(page_title="One-Minute Resume Tailor", page_icon="📝", layout="centered")
 st.title("📝 One-Minute Resume Tailor")
@@ -16,7 +16,7 @@ st.caption("Upload .docx resume + paste JD → get edited .docx that keeps your 
 api_key = os.environ.get("OPENAI_API_KEY", "")
 if not api_key:
     st.warning("Add OPENAI_API_KEY in Streamlit Secrets (TOML: OPENAI_API_KEY = \"sk-...\" ).")
-client = OpenAI(api_key=api_key) if api_key else None
+openai.api_key = api_key
 
 # --- Helpers to walk the doc without breaking styles ---
 def _iter_block_items(parent):
@@ -53,7 +53,7 @@ Rules:
 - Do NOT invent employers, titles, or dates; tighten and rephrase only.
 """
 
-def call_llm(resume_text, jd_text, client: OpenAI):
+def call_llm(resume_text, jd_text):
     user_prompt = f"""
 ORIGINAL RESUME (text-only snapshot):
 ---
@@ -67,7 +67,7 @@ JOB DESCRIPTION:
 
 Task: Return ONLY the revised resume TEXT (no extra commentary), keeping the SAME SECTION ORDER and roughly the same number of bullets per experience. Keep it to ONE PAGE worth of concise content.
 """
-    resp = client.chat.completions.create(
+    resp = openai.chat.completions.create(
         model="gpt-4o-mini",
         messages=[
             {"role":"system","content": SYSTEM_PROMPT},
@@ -114,7 +114,7 @@ resume_file = st.file_uploader("Upload your **.docx** resume", type=["docx"])
 jd = st.text_area("Paste the Job Description", height=220, placeholder="Paste JD here...")
 
 if st.button("✨ Tailor my resume", type="primary", use_container_width=True):
-    if not (resume_file and jd and client):
+    if not (resume_file and jd and api_key):
         st.error("Please upload a .docx, paste a JD, and ensure the API key is set.")
         st.stop()
 
@@ -126,7 +126,7 @@ if st.button("✨ Tailor my resume", type="primary", use_container_width=True):
 
     snapshot = extract_text_snapshot(src)
     with st.spinner("Rewriting bullets and aligning to JD..."):
-        revised_text = call_llm(snapshot, jd, client)
+        revised_text = call_llm(snapshot, jd)
 
     revised_doc = rewrite_doc_in_place(deepcopy(src), revised_text)
 
