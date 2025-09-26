@@ -22,10 +22,10 @@ openai.api_key = api_key
 
 # -------------------- Helpers --------------------
 def _iter_block_items(parent):
-    """Yield paragraphs and tables in document order while preserving styles."""
-    if isinstance(parent, DocxDocument):   # ✅ fixed type check
+    """Yield paragraphs and tables in document order."""
+    try:
         parent_elm = parent.element.body
-    else:
+    except AttributeError:
         parent_elm = parent._element
     for child in parent_elm.iterchildren():
         if isinstance(child, CT_P):
