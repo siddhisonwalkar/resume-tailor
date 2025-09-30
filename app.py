@@ -15,7 +15,7 @@ st.title("📝 One-Minute Resume Tailor (Hugging Face)")
 st.caption("Upload .docx resume + paste JD → get edited .docx that keeps your template. Export to PDF in Word/Google Docs.")
 
 HF_TOKEN = st.secrets.get("HF_TOKEN") or os.environ.get("HF_TOKEN", "")
-MODEL_ID = "HuggingFaceH4/zephyr-7b-beta"
+MODEL_ID = "mistralai/Mistral-7B-Instruct-v0.2"
 API_URL = f"https://api-inference.huggingface.co/models/{MODEL_ID}"
 HEADERS = {"Authorization": f"Bearer {HF_TOKEN}"}
 
